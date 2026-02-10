@@ -1,16 +1,14 @@
 const express = require("express");
 const router = express.Router();
 
+const { body } = require("express-validator");
+const { validate } = require("../middlewares/validate.middleware");
+
+
 const { authMiddleware } = require("../middlewares/auth.middleware");
 const { requireRole } = require("../middlewares/role.middleware");
 
-const {
-  listRooms,
-  getRoomById,
-  createRoom,
-  updateRoom,
-  deleteRoom,
-} = require("../controllers/rooms.controller");
+const { listRooms, getRoomById, createRoom, updateRoom, deleteRoom, } = require("../controllers/rooms.controller");
 
 // Public
 router.get("/", listRooms);

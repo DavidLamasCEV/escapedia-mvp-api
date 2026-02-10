@@ -98,7 +98,7 @@ exports.createRoom = async (req, res) => {
       return res.status(404).json({ ok: false, message: "Local no encontrado" });
     }
 
-    // Permisos: owner solo puede crear rooms en sus venues (admin puede en cualquiera)
+    // owner solo puede crear rooms en sus venues (admin puede en cualquiera)
     if (req.user.role !== "admin" && String(local.ownerId) !== String(req.user.id)) {
         return res.status(403).json({ ok: false, message: "No puedes crear salas en locales que no son tuyos" });
     }
@@ -165,10 +165,13 @@ exports.deleteRoom = async (req, res) => {
       return res.status(403).json({ ok: false, message: "No puedes borrar salas que no son tuyas" });
     }
 
-    await EscapeRoom.findByIdAndDelete(req.params.id);
-    return res.status(200).json({ ok: true, message: "Sala eliminada" });
+    room.isActive = false;
+    await room.save();
+
+    return res.status(200).json({ ok: true, message: "Sala desactivada" });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, message: "Error borrando sala" });
+    return res.status(500).json({ ok: false, message: "Error desactivando sala" });
   }
 };
+
