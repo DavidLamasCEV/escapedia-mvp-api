@@ -106,3 +106,18 @@ exports.login = async (req, res) => {
     });
   }
 };
+
+exports.me = async (req, res) => {
+  try {
+    return res.status(200).json({
+      ok: true,
+      user: req.user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      message: "Error obteniendo usuario",
+    });
+  }
+};
+
