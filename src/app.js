@@ -3,6 +3,11 @@ const cors = require("cors");
 const morgan = require("morgan");
 
 const authRoutes = require("./routes/auth.routes");
+const roomRoutes = require("./routes/rooms.routes");
+const localesRoutes = require("./routes/locales.routes");
+
+const { authMiddleware } = require("./middlewares/auth.middleware");
+const { requireRole } = require("./middlewares/role.middleware");
 
 const app = express();
 
@@ -12,7 +17,14 @@ app.use(morgan("dev"));
 
 // Rutas
 app.use("/auth", authRoutes);
+app.use("/rooms", roomRoutes);
+app.use("/locales", localesRoutes);
 console.log("[ROUTES] Auth routes mounted at /auth");
+
+app.get("/admin-test", authMiddleware, requireRole(["admin"]), (req, res) => {
+  return res.status(200).json({ ok: true, message: "Eres admin" });
+});
+
 
 // Healthcheck
 app.get("/health", (req, res) => {
