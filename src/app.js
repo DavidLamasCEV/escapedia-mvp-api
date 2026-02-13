@@ -9,6 +9,9 @@ const localesRoutes = require("./routes/locales.routes");
 const { authMiddleware } = require("./middlewares/auth.middleware");
 const { requireRole } = require("./middlewares/role.middleware");
 
+const bookingRoutes = require("./routes/booking.routes");
+const ownerRoutes = require("./routes/owner.routes");
+
 const app = express();
 
 app.use(cors());
@@ -19,6 +22,8 @@ app.use(morgan("dev"));
 app.use("/auth", authRoutes);
 app.use("/rooms", roomRoutes);
 app.use("/locales", localesRoutes);
+app.use("/bookings", bookingRoutes);
+app.use("/owner", ownerRoutes);
 console.log("[ROUTES] Auth routes mounted at /auth");
 
 app.get("/admin-test", authMiddleware, requireRole(["admin"]), (req, res) => {
