@@ -12,6 +12,7 @@ const { requireRole } = require("./middlewares/role.middleware");
 const bookingRoutes = require("./routes/booking.routes");
 const ownerRoutes = require("./routes/owner.routes");
 const reviewRoutes = require("./routes/reviews.routes");
+const trophyRoutes = require("./routes/trophies.routes");
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/bookings", bookingRoutes);
 app.use("/owner", ownerRoutes);
 app.use("/reviews", reviewRoutes);
 console.log("[ROUTES] Auth routes mounted at /auth");
+app.use("/trophies", trophyRoutes);
 
 app.get("/admin-test", authMiddleware, requireRole(["admin"]), (req, res) => {
   return res.status(200).json({ ok: true, message: "Eres admin" });
