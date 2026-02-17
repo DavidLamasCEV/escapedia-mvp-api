@@ -12,8 +12,42 @@ exports.listRooms = async (req, res) => {
       city,
       difficulty,
       theme,
-      sort = "new", // new | old | priceAsc | priceDesc
+      minPrice,
+      maxPrice,
+      sort = "new",
     } = req.query;
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+
+    if (!Number.isInteger(pageNum) || pageNum < 1) {
+      return res.status(400).json({ ok: false, message: "page debe ser un entero >= 1" });
+    }
+
+    if (!Number.isInteger(limitNum) || limitNum < 1 || limitNum > 50) {
+      return res.status(400).json({ ok: false, message: "limit debe ser un entero entre 1 y 50" });
+    }
+
+    let minPriceNum = null;
+    let maxPriceNum = null;
+
+    if (minPrice !== undefined) {
+      minPriceNum = Number(minPrice);
+      if (Number.isNaN(minPriceNum) || minPriceNum < 0) {
+        return res.status(400).json({ ok: false, message: "minPrice debe ser un numero >= 0" });
+      }
+    }
+
+    if (maxPrice !== undefined) {
+      maxPriceNum = Number(maxPrice);
+      if (Number.isNaN(maxPriceNum) || maxPriceNum < 0) {
+        return res.status(400).json({ ok: false, message: "maxPrice debe ser un numero >= 0" });
+      }
+    }
+
+    if (minPriceNum !== null && maxPriceNum !== null && minPriceNum > maxPriceNum) {
+      return res.status(400).json({ ok: false, message: "minPrice no puede ser mayor que maxPrice" });
+    }
 
     const filters = { isActive: true };
 
@@ -21,14 +55,21 @@ exports.listRooms = async (req, res) => {
     if (difficulty) filters.difficulty = difficulty;
     if (theme) filters.themes = theme;
 
-    let sortObj = { createdAt: -1 };
+    if (minPriceNum !== null || maxPriceNum !== null) {
+      filters.priceFrom = {};
+      if (minPriceNum !== null) filters.priceFrom.$gte = minPriceNum;
+      if (maxPriceNum !== null) filters.priceFrom.$lte = maxPriceNum;
+    }
+
+    let sortObj = { createdAt: -1 }; // default = new
+
     if (sort === "old") sortObj = { createdAt: 1 };
     if (sort === "priceAsc") sortObj = { priceFrom: 1 };
     if (sort === "priceDesc") sortObj = { priceFrom: -1 };
+    if (sort === "priceFrom") sortObj = { priceFrom: 1 }; // alias
+    if (sort === "popular") sortObj = { ratingCount: -1, ratingAvg: -1 };
 
-    const pageNum = Number(page);
-    const limitNum = Number(limit);
-
+    // 5) Query
     const rooms = await EscapeRoom.find(filters)
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -50,6 +91,7 @@ exports.listRooms = async (req, res) => {
     return res.status(500).json({ ok: false, message: "Error listando salas" });
   }
 };
+
 
 // GET /rooms/:id (public)
 exports.getRoomById = async (req, res) => {
