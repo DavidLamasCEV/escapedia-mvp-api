@@ -7,6 +7,7 @@ const { validate } = require("../middlewares/validate.middleware");
 
 const { authMiddleware } = require("../middlewares/auth.middleware");
 const { requireRole } = require("../middlewares/role.middleware");
+const roomsController = require("../controllers/rooms.controller");
 
 const { listRooms, getRoomById, createRoom, updateRoom, deleteRoom, } = require("../controllers/rooms.controller");
 
@@ -22,5 +23,6 @@ router.get("/:id/reviews", reviewsController.getReviewsByRoom);
 router.post("/", authMiddleware, requireRole(["owner", "admin"]), createRoom);
 router.put("/:id", authMiddleware, requireRole(["owner", "admin"]), updateRoom);
 router.delete("/:id", authMiddleware, requireRole(["owner", "admin"]), deleteRoom);
+router.post("/:id/images", authMiddleware, requireRole(["owner", "admin"]), roomsController.addRoomImage);
 
 module.exports = router;

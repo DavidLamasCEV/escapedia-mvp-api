@@ -1,5 +1,6 @@
 const EscapeRoom = require("../models/EscapeRoom");
 const Local = require("../models/Local");
+const { uploadBase64Image } = require("../services/cloudinary.service");
 
 // GET /rooms (public)
 exports.listRooms = async (req, res) => {
@@ -172,6 +173,60 @@ exports.deleteRoom = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ ok: false, message: "Error desactivando sala" });
+  }
+};
+
+exports.addRoomImage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const roomId = req.params.id;
+
+    const { imageBase64 } = req.body;
+
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return res.status(400).json({
+        ok: false,
+        message: "imageBase64 es obligatorio",
+      });
+    }
+
+    if (!imageBase64.startsWith("data:image/")) {
+      return res.status(400).json({
+        ok: false,
+        message: "Formato invalido: debe ser data:image/...;base64,...",
+      });
+    }
+
+    const room = await EscapeRoom.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ ok: false, message: "Room no encontrada" });
+    }
+
+    const local = await Local.findById(room.localId);
+    if (!local) {
+      return res.status(404).json({ ok: false, message: "Local no encontrado" });
+    }
+
+    if (String(local.ownerId) !== String(userId)) {
+      return res.status(403).json({ ok: false, message: "No eres el owner de este local" });
+    }
+
+    const upload = await uploadBase64Image(imageBase64, `escapedia/rooms/${roomId}`);
+
+    room.galleryImageUrls = room.galleryImageUrls || [];
+    room.galleryImageUrls.push(upload.url);
+
+    await room.save();
+
+    return res.status(200).json({
+      ok: true,
+      message: "Imagen subida correctamente",
+      imageUrl: upload.url
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Error subiendo imagen" });
   }
 };
 
