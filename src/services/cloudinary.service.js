@@ -20,4 +20,8 @@ async function uploadBase64Image(imageBase64, folder) {
   };
 }
 
-module.exports = { uploadBase64Image };
+async function deleteByPublicId(publicId) {
+  return await cloudinary.uploader.destroy(publicId);
+}
+
+module.exports = { uploadBase64Image, deleteByPublicId  };

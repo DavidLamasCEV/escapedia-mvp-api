@@ -24,5 +24,6 @@ router.post("/", authMiddleware, requireRole(["owner", "admin"]), createRoom);
 router.put("/:id", authMiddleware, requireRole(["owner", "admin"]), updateRoom);
 router.delete("/:id", authMiddleware, requireRole(["owner", "admin"]), deleteRoom);
 router.post("/:id/images", authMiddleware, requireRole(["owner", "admin"]), roomsController.addRoomImage);
+router.delete("/:id/images", authMiddleware, requireRole(["owner", "admin"]), roomsController.deleteRoomImage);
 
 module.exports = router;

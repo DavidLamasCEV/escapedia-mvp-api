@@ -1,6 +1,7 @@
 const EscapeRoom = require("../models/EscapeRoom");
 const Local = require("../models/Local");
 const { uploadBase64Image } = require("../services/cloudinary.service");
+const { deleteByPublicId } = require("../services/cloudinary.service");
 
 // GET /rooms (public)
 exports.listRooms = async (req, res) => {
@@ -207,9 +208,15 @@ exports.addRoomImage = async (req, res) => {
       return res.status(404).json({ ok: false, message: "Local no encontrado" });
     }
 
-    if (String(local.ownerId) !== String(userId)) {
-      return res.status(403).json({ ok: false, message: "No eres el owner de este local" });
+    const isAdmin = req.user.role === "admin";
+
+    if (!isAdmin && String(local.ownerId) !== String(userId)) {
+      return res.status(403).json({
+        ok: false,
+        message: "No tienes permisos sobre este local"
+      });
     }
+
 
     const upload = await uploadBase64Image(imageBase64, `escapedia/rooms/${roomId}`);
 
@@ -227,6 +234,85 @@ exports.addRoomImage = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ ok: false, message: "Error subiendo imagen" });
+  }
+};
+
+exports.deleteRoomImage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const roomId = req.params.id;
+
+    const { imageUrl } = req.body;
+
+    if (!imageUrl || typeof imageUrl !== "string") {
+      return res.status(400).json({
+        ok: false,
+        message: "imageUrl es obligatorio",
+      });
+    }
+
+    const room = await EscapeRoom.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ ok: false, message: "Room no encontrada" });
+    }
+
+    const local = await Local.findById(room.localId);
+    if (!local) {
+      return res.status(404).json({ ok: false, message: "Local no encontrado" });
+    }
+
+    const isAdmin = req.user.role === "admin";
+
+    if (!isAdmin && String(local.ownerId) !== String(userId)) {
+      return res.status(403).json({
+        ok: false,
+        message: "No tienes permisos sobre este local"
+      });
+    }
+
+
+    const before = room.galleryImageUrls.length;
+    room.galleryImageUrls = room.galleryImageUrls.filter((url) => url !== imageUrl);
+
+    if (room.galleryImageUrls.length === before) {
+      return res.status(404).json({
+        ok: false,
+        message: "Esa imagen no existe en la galeria de esta room",
+      });
+    }
+
+    await room.save();
+
+    try {
+      const marker = "/upload/";
+      const idx = imageUrl.indexOf(marker);
+
+      if (idx !== -1) {
+        const afterUpload = imageUrl.substring(idx + marker.length); // v123/escapedia/rooms/.../archivo.png
+        const parts = afterUpload.split("/");
+
+        // Quitamos la parte "v123..." si existe
+        if (parts[0].startsWith("v")) {
+          parts.shift();
+        }
+
+        const pathWithFile = parts.join("/"); // escapedia/rooms/.../archivo.png
+        const noQuery = pathWithFile.split("?")[0];
+        const noExt = noQuery.replace(/\.[^/.]+$/, ""); // quitamos extension
+
+        await deleteByPublicId(noExt);
+      }
+    } catch (cloudErr) {
+      console.error("[deleteRoomImage] Cloudinary delete error:", cloudErr && cloudErr.message ? cloudErr.message : cloudErr);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Imagen eliminada correctamente",
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Error eliminando imagen" });
   }
 };
 
