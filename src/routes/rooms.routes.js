@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { body } = require("express-validator");
+const { body, query } = require("express-validator");
 const { validate } = require("../middlewares/validate.middleware");
 
 
@@ -14,7 +14,29 @@ const { listRooms, getRoomById, createRoom, updateRoom, deleteRoom, } = require(
 const reviewsController = require("../controllers/reviews.controller");
 
 // Public
-router.get("/", listRooms);
+router.get(
+  "/",
+  [
+    query("page").optional().isInt({ min: 1 }).withMessage("page debe ser entero >= 1"),
+    query("limit").optional().isInt({ min: 1, max: 50 }).withMessage("limit debe ser entero entre 1 y 50"),
+
+    query("city").optional().isString().trim(),
+    query("difficulty").optional().isString().trim(),
+    query("theme").optional().isString().trim(),
+
+    query("minPrice").optional().isFloat({ min: 0 }).withMessage("minPrice debe ser numero >= 0"),
+    query("maxPrice").optional().isFloat({ min: 0 }).withMessage("maxPrice debe ser numero >= 0"),
+
+    query("sort")
+      .optional()
+      .isIn(["new", "old", "priceAsc", "priceDesc", "priceFrom", "popular"])
+      .withMessage("sort invalido"),
+
+    validate,
+  ],
+  listRooms
+);
+
 router.get("/:id", getRoomById);
 router.get("/:id/reviews", reviewsController.getReviewsByRoom);
 
