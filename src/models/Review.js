@@ -18,7 +18,7 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
       required: true,
-      unique: true, // regla: solo una review por booking
+      unique: true, 
       index: true,
     },
     rating: {
@@ -29,13 +29,24 @@ const reviewSchema = new mongoose.Schema(
     },
     comment: {
       type: String,
-      required: true,
       trim: true,
-      minlength: 3,
       maxlength: 1000,
+      default: "",
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }
 );
+
+reviewSchema.index({ roomId: 1, isDeleted: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Review", reviewSchema);

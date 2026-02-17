@@ -70,6 +70,20 @@ const escapeRoomSchema = new mongoose.Schema(
         type: String 
     }],
 
+    ratingAvg: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+    },
+
+    ratingCount: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+
+
     isActive: { 
         type: Boolean, 
         default: true 

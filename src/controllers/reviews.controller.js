@@ -1,10 +1,34 @@
+const mongoose = require("mongoose");
 const Review = require("../models/Review");
 const Booking = require("../models/Booking");
+const EscapeRoom = require("../models/EscapeRoom");
 
 function isValidObjectId(id) {
-  return typeof id === "string" && id.match(/^[0-9a-fA-F]{24}$/);
+  return mongoose.Types.ObjectId.isValid(id);
 }
 
+async function recalcRoomRating(roomId) {
+  const stats = await Review.aggregate([
+    { $match: { roomId: new mongoose.Types.ObjectId(roomId), isDeleted: false } },
+    {
+      $group: {
+        _id: "$roomId",
+        avg: { $avg: "$rating" },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const avg = stats.length ? stats[0].avg : 0;
+  const count = stats.length ? stats[0].count : 0;
+
+  const avgRounded = Math.round(avg * 10) / 10;
+
+  await EscapeRoom.findByIdAndUpdate(roomId, {
+    ratingAvg: avgRounded,
+    ratingCount: count,
+  });
+}
 
 async function createReview(req, res) {
   try {
@@ -20,12 +44,20 @@ async function createReview(req, res) {
       return res.status(400).json({ ok: false, message: "rating debe ser un entero entre 1 y 5" });
     }
 
-    if (typeof comment !== "string" || comment.trim().length < 3) {
-      return res.status(400).json({ ok: false, message: "comment es obligatorio (min 3 caracteres)" });
+    // comment opcional
+    let commentClean = "";
+    if (comment !== undefined && comment !== null) {
+      if (typeof comment !== "string") {
+        return res.status(400).json({ ok: false, message: "comment debe ser texto" });
+      }
+      commentClean = comment.trim();
+      if (commentClean.length > 1000) {
+        return res.status(400).json({ ok: false, message: "comment demasiado largo (max 1000)" });
+      }
     }
 
     const booking = await Booking.findById(bookingId);
-    if (!booking) {
+    if (!booking || booking.isDeleted) {
       return res.status(404).json({ ok: false, message: "Booking no encontrada" });
     }
 
@@ -37,7 +69,8 @@ async function createReview(req, res) {
       return res.status(400).json({ ok: false, message: "Solo puedes crear review si la booking esta en completed" });
     }
 
-    const existing = await Review.findOne({ bookingId: booking._id });
+    // si Review tiene soft delete, filtra aqui tambien
+    const existing = await Review.findOne({ bookingId: booking._id, isDeleted: false });
     if (existing) {
       return res.status(409).json({ ok: false, message: "Ya existe una review para esta booking" });
     }
@@ -47,8 +80,10 @@ async function createReview(req, res) {
       roomId: booking.roomId,
       bookingId: booking._id,
       rating: ratingNum,
-      comment: comment.trim(),
+      comment: commentClean,
     });
+
+    await recalcRoomRating(booking.roomId);
 
     return res.status(201).json({ ok: true, review });
   } catch (err) {
@@ -63,9 +98,9 @@ async function getMyReviews(req, res) {
   try {
     const userId = req.user.id;
 
-    const reviews = await Review.find({ userId })
+    const reviews = await Review.find({ userId, isDeleted: false })
       .sort({ createdAt: -1 })
-      .populate("roomId", "title city difficulty coverImageUrl");
+      .populate("roomId", "title city difficulty coverImageUrl ratingAvg ratingCount");
 
     return res.status(200).json({ ok: true, reviews });
   } catch (err) {
@@ -81,7 +116,7 @@ async function getReviewsByRoom(req, res) {
       return res.status(400).json({ ok: false, message: "roomId invalido" });
     }
 
-    const reviews = await Review.find({ roomId })
+    const reviews = await Review.find({ roomId, isDeleted: false })
       .sort({ createdAt: -1 })
       .populate("userId", "name");
 
