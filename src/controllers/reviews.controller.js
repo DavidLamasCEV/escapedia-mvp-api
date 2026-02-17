@@ -126,8 +126,138 @@ async function getReviewsByRoom(req, res) {
   }
 }
 
+async function updateReview(req, res) {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const reviewId = req.params.id;
+    const { rating, comment } = req.body;
+
+    if (!reviewId || !isValidObjectId(reviewId)) {
+      return res.status(400).json({ ok: false, message: "reviewId invalido" });
+    }
+
+    const review = await Review.findById(reviewId);
+    if (!review || review.isDeleted) {
+      return res.status(404).json({ ok: false, message: "Review no encontrada" });
+    }
+
+    const isOwnerOfReview = String(review.userId) === String(userId);
+    const isAdmin = userRole === "admin";
+
+    if (!isOwnerOfReview && !isAdmin) {
+      return res.status(403).json({
+        ok: false,
+        message: "No tienes permisos para editar esta review",
+      });
+    }
+
+    let hasChanges = false;
+
+    if (rating !== undefined) {
+      const ratingNum = Number(rating);
+      if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+        return res.status(400).json({
+          ok: false,
+          message: "rating debe ser un entero entre 1 y 5",
+        });
+      }
+      review.rating = ratingNum;
+      hasChanges = true;
+    }
+
+    if (comment !== undefined) {
+      if (comment === null) {
+        review.comment = "";
+        hasChanges = true;
+      } else {
+        if (typeof comment !== "string") {
+          return res.status(400).json({
+            ok: false,
+            message: "comment debe ser texto",
+          });
+        }
+        const commentClean = comment.trim();
+        if (commentClean.length > 1000) {
+          return res.status(400).json({
+            ok: false,
+            message: "comment demasiado largo (max 1000)",
+          });
+        }
+        review.comment = commentClean;
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      return res.status(400).json({
+        ok: false,
+        message: "No hay cambios que aplicar",
+      });
+    }
+
+    await review.save();
+    await recalcRoomRating(review.roomId);
+
+    return res.status(200).json({ ok: true, review });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      message: "Error actualizando review",
+    });
+  }
+}
+
+
+async function deleteReview(req, res) {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const reviewId = req.params.id;
+
+    if (!reviewId || !isValidObjectId(reviewId)) {
+      return res.status(400).json({ ok: false, message: "reviewId invalido" });
+    }
+
+    const review = await Review.findById(reviewId);
+    if (!review || review.isDeleted) {
+      return res.status(404).json({ ok: false, message: "Review no encontrada" });
+    }
+
+    const isOwnerOfReview = String(review.userId) === String(userId);
+    const isAdmin = userRole === "admin";
+
+    if (!isOwnerOfReview && !isAdmin) {
+      return res.status(403).json({
+        ok: false,
+        message: "No tienes permisos para borrar esta review",
+      });
+    }
+
+    review.isDeleted = true;
+    review.deletedAt = new Date();
+    await review.save();
+
+    await recalcRoomRating(review.roomId);
+
+    return res.status(200).json({
+      ok: true,
+      message: "Review borrada correctamente",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      message: "Error borrando review",
+    });
+  }
+}
+
+
+
 module.exports = {
   createReview,
   getMyReviews,
   getReviewsByRoom,
+  updateReview,
+  deleteReview,
 };

@@ -10,4 +10,8 @@ router.post("/", authMiddleware, reviewsController.createReview);
 
 router.get("/mine", authMiddleware, reviewsController.getMyReviews);
 
+router.put("/:id", authMiddleware, reviewsController.updateReview);
+router.delete("/:id", authMiddleware, reviewsController.deleteReview);
+
+
 module.exports = router;
