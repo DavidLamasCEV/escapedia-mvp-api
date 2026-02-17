@@ -10,9 +10,13 @@ const { requireRole } = require("../middlewares/role.middleware");
 
 const { listRooms, getRoomById, createRoom, updateRoom, deleteRoom, } = require("../controllers/rooms.controller");
 
+const reviewsController = require("../controllers/reviews.controller");
+
 // Public
 router.get("/", listRooms);
 router.get("/:id", getRoomById);
+router.get("/:id/reviews", reviewsController.getReviewsByRoom);
+
 
 // Owner/Admin
 router.post("/", authMiddleware, requireRole(["owner", "admin"]), createRoom);
