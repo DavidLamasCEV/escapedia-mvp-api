@@ -31,3 +31,13 @@ exports.getMyLocales = async (req, res) => {
     return res.status(500).json({ ok: false, message: "Error obteniendo locales" });
   }
 };
+
+exports.getAllLocales = async (req, res) => {
+  try {
+    const locales = await Local.find().sort({ createdAt: -1 });
+    return res.status(200).json({ ok: true, locales });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Error obteniendo locales" });
+  }
+};
