@@ -71,11 +71,29 @@ exports.listRooms = async (req, res) => {
     if (sort === "popular") sortObj = { ratingCount: -1, ratingAvg: -1 };
 
     // 5) Query
-    const rooms = await EscapeRoom.find(filters)
+    const roomsRaw = await EscapeRoom.find(filters)
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .populate("localId", "name city");
+
+    const rooms = roomsRaw.map(r => {
+      const obj = r.toObject({ virtuals: true });
+
+      const cover =
+        obj.coverImageUrl ||
+        obj.coverImage ||
+        obj.image ||
+        obj.imageUrl ||
+        obj.mainImageUrl ||
+        (Array.isArray(obj.images) ? obj.images[0] : null) ||
+        (Array.isArray(obj.gallery) ? obj.gallery[0] : null);
+
+      return {
+        ...obj,
+        coverImageUrl: cover || null,
+      };
+    });
 
     const total = await EscapeRoom.countDocuments(filters);
 

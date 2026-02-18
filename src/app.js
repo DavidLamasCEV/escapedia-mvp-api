@@ -13,6 +13,8 @@ const bookingRoutes = require("./routes/booking.routes");
 const ownerRoutes = require("./routes/owner.routes");
 const reviewRoutes = require("./routes/reviews.routes");
 const trophyRoutes = require("./routes/trophies.routes");
+const usersRoutes = require("./routes/users.routes");
+
 
 const app = express();
 
@@ -23,6 +25,7 @@ app.use(morgan("dev"));
 // Rutas
 app.use("/auth", authRoutes);
 app.use("/rooms", roomRoutes);
+app.use("/users", usersRoutes);
 app.use("/locales", localesRoutes);
 app.use("/bookings", bookingRoutes);
 app.use("/owner", ownerRoutes);
