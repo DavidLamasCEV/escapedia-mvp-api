@@ -142,9 +142,11 @@ Cumple requisitos obligatorios de relaciones 1-N y N-N.
 -   POST /auth/forgot-password
 -   POST /auth/reset-password
 
-Características: - Password hasheado con bcrypt - JWT en login -
-Middleware de protección de rutas - Recuperación de contraseña con token
-y expiración
+Características: 
+- Password hasheado con bcrypt
+- JWT en login
+- Middleware de protección de rutas
+- Recuperación de contraseña con token y expiración
 
 ------------------------------------------------------------------------
 
