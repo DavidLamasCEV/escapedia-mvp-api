@@ -43,6 +43,22 @@ const escapeRoomSchema = new mongoose.Schema(
         min: 1 
     },
 
+    weekSlots: {
+        type: [String],
+        default: []
+    },
+
+    weekendSlots:{
+        type: [String],
+        default: []
+    },
+
+    slotDurationMin: {
+        type: Number,
+        default: 90,
+        min: 15
+    },
+
     playersMin: { 
         type: Number, 
         required: true, 

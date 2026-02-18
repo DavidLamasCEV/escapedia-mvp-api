@@ -1,6 +1,9 @@
 const Booking = require("../models/Booking");
 const EscapeRoom = require("../models/EscapeRoom");
 const Local = require("../models/Local");
+const mongoose = require("mongoose");
+const User = require("../models/user");
+
 
 async function ensureNoOverlap(roomId, scheduledAt) {
   const existing = await Booking.findOne({
@@ -42,7 +45,7 @@ async function ensureOwnerOfRoom(reqUser, roomId) {
 
 exports.createBooking = async (req, res) => {
   try {
-    const { roomId, scheduledAt, players } = req.body;
+    const { roomId, scheduledAt, players, userId, customerNote, internalNote } = req.body;
 
     if (!roomId || !scheduledAt || players === undefined || players === null) {
       return res.status(400).json({
@@ -66,6 +69,28 @@ exports.createBooking = async (req, res) => {
         message: "scheduledAt debe ser una fecha valida",
       });
     }
+    
+    let customerNoteClean = "";
+    if (customerNote !== undefined && customerNote !== null) {
+      if (typeof customerNote !== "string") {
+        return res.status(400).json({ ok: false, message: "customerNote debe ser texto" });
+      }
+      customerNoteClean = customerNote.trim();
+      if (customerNoteClean.length > 500) {
+        return res.status(400).json({ ok: false, message: "customerNote demasiado largo (max 500)" });
+      }
+    }
+
+    let internalNoteClean = "";
+    if (internalNote !== undefined && internalNote !== null) {
+      if (typeof internalNote !== "string") {
+        return res.status(400).json({ ok: false, message: "internalNote debe ser texto" });
+      }
+      internalNoteClean = internalNote.trim();
+      if (internalNoteClean.length > 1000) {
+        return res.status(400).json({ ok: false, message: "internalNote demasiado largo (max 1000)" });
+      }
+    }
 
     const room = await EscapeRoom.findById(roomId);
     if (!room || room.isActive === false) {
@@ -75,6 +100,34 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    const day = scheduledDate.getDay(); // 0=Domingo, 6=Sabado
+    const isWeekend = day === 0 || day === 6;
+
+    const allowedSlots = isWeekend ? room.weekendSlots : room.weekSlots;
+
+    const hh = String(scheduledDate.getHours()).padStart(2, "0");
+    const mm = String(scheduledDate.getMinutes()).padStart(2, "0");
+    const timeHHmm = `${hh}:${mm}`;
+
+    if (!Array.isArray(allowedSlots) || allowedSlots.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "Esta sala no tiene horarios configurados para ese día",
+      });
+    }
+
+    if (!allowedSlots.includes(timeHHmm)) {
+      return res.status(400).json({
+        ok: false,
+        message: "Ese horario no existe para esta sala en ese día",
+        info: {
+          dayType: isWeekend ? "weekend" : "week",
+          allowedSlots,
+        },
+      });
+    }
+
+
     if (playersNum < Number(room.playersMin) || playersNum > Number(room.playersMax)) {
       return res.status(400).json({
         ok: false,
@@ -82,15 +135,63 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // Regla: si faltan menos de 12h, hay que llamar (no se permite reservar online)
+    const now = new Date();
+    const diffMs = scheduledDate.getTime() - now.getTime();
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    const userRole = req.user.role;
+
+    if (userRole === "user" && diffMs < twelveHoursMs) {
+      return res.status(409).json({
+        ok: false,
+        code: "CALL_REQUIRED",
+        message: "Faltan menos de 12 horas. Llama para confirmar disponibilidad.",
+      });
+    }
+
+
     await ensureNoOverlap(roomId, scheduledDate);
 
+    let bookingUserId = req.user.id;
+
+    if (userRole === "owner" || userRole === "admin") {
+      if (userId) {
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          return res.status(400).json({ ok: false, message: "userId invalido" });
+        }
+
+        const user = await User.findById(userId).select("_id role isDeleted");
+        if (!user || user.isDeleted) {
+          return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
+        }
+
+        if (user.role !== "user") {
+          return res.status(400).json({ ok: false, message: "Solo se puede asignar la reserva a un usuario con role 'user'" });
+        }
+
+        bookingUserId = user._id;
+      } else {
+        return res.status(400).json({
+          ok: false,
+          message: "Para reservas manuales (owner/admin) debes indicar userId del cliente",
+        });
+      }
+    }
+
+    const canWriteInternal = userRole === "owner" || userRole === "admin";
+
     const booking = await Booking.create({
-      userId: req.user.id,
+      userId: bookingUserId,
       roomId,
       scheduledAt: scheduledDate,
       players: playersNum,
       status: "pending",
+      customerNote: customerNoteClean,
+      internalNote: canWriteInternal ? internalNoteClean : "",
+      createdByUserId: req.user.id, 
+      createdByRole: req.user.role, 
     });
+
 
     return res.status(201).json({ ok: true, booking });
   } catch (error) {
@@ -105,15 +206,21 @@ exports.createBooking = async (req, res) => {
 
 exports.getMyBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({ userId: req.user.id })
-      .sort({ createdAt: -1 })
-      .populate("roomId", "title city difficulty durationMin localId");
+    const bookings = await Booking.find({
+      userId: req.user.id,
+      isDeleted: { $ne: true },
+    })
+      .select("-internalNote")
+      .populate("roomId", "title city durationMin")
+      .sort({ createdAt: -1 });
 
     return res.status(200).json({ ok: true, bookings });
   } catch (error) {
-    return res.status(500).json({ ok: false, message: "Error obteniendo mis reservas" });
+    return res.status(500).json({ ok: false, message: "Error obteniendo reservas" });
   }
 };
+
+
 
 exports.cancelMyBooking = async (req, res) => {
   try {
@@ -232,3 +339,70 @@ exports.cancelBookingAsOwner = async (req, res) => {
     return res.status(status).json({ ok: false, message: error.message || "Error cancelando reserva" });
   }
 };
+
+exports.updateBookingNotes = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { customerNote, internalNote } = req.body;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ ok: false, message: "bookingId invalido" });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking || booking.isDeleted) {
+      return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
+    }
+
+    let hasChanges = false;
+
+    if (customerNote !== undefined) {
+      if (String(booking.userId) !== String(userId) && userRole !== "admin") {
+        return res.status(403).json({ ok: false, message: "No puedes modificar la nota del cliente" });
+      }
+
+      if (typeof customerNote !== "string") {
+        return res.status(400).json({ ok: false, message: "customerNote debe ser texto" });
+      }
+
+      const clean = customerNote.trim();
+      if (clean.length > 500) {
+        return res.status(400).json({ ok: false, message: "customerNote demasiado largo (max 500)" });
+      }
+
+      booking.customerNote = clean;
+      hasChanges = true;
+    }
+
+    if (internalNote !== undefined) {
+      if (userRole !== "owner" && userRole !== "admin") {
+        return res.status(403).json({ ok: false, message: "No puedes modificar la nota interna" });
+      }
+
+      if (typeof internalNote !== "string") {
+        return res.status(400).json({ ok: false, message: "internalNote debe ser texto" });
+      }
+
+      const clean = internalNote.trim();
+      if (clean.length > 1000) {
+        return res.status(400).json({ ok: false, message: "internalNote demasiado largo (max 1000)" });
+      }
+
+      booking.internalNote = clean;
+      hasChanges = true;
+    }
+
+    if (!hasChanges) {
+      return res.status(400).json({ ok: false, message: "No hay cambios que aplicar" });
+    }
+
+    await booking.save();
+
+    return res.status(200).json({ ok: true, booking });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: "Error actualizando notas" });
+  }
+};
+

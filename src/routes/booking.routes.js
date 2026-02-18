@@ -9,11 +9,14 @@ const {
   createBooking,
   getMyBookings,
   cancelMyBooking,
+  updateBookingNotes,
 } = require("../controllers/bookings.controller");
 
-router.post( "/", authMiddleware, createBooking );
+router.post("/", authMiddleware, createBooking);
 
 router.get("/mine", authMiddleware, getMyBookings);
 router.patch("/:id/cancel", authMiddleware, cancelMyBooking);
+router.patch("/:id/notes", authMiddleware, updateBookingNotes);
 
 module.exports = router;
+

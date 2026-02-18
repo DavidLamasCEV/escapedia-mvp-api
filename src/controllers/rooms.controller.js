@@ -1,5 +1,6 @@
 const EscapeRoom = require("../models/EscapeRoom");
 const Local = require("../models/Local");
+const Booking = require("../models/Booking");
 const { uploadBase64Image } = require("../services/cloudinary.service");
 const { deleteByPublicId } = require("../services/cloudinary.service");
 
@@ -121,6 +122,9 @@ exports.createRoom = async (req, res) => {
       playersMin,
       playersMax,
       priceFrom,
+      weekSlots = [],
+      weekendSlots = [],
+      slotDurationMin,
     } = req.body;
 
     if (
@@ -147,6 +151,15 @@ exports.createRoom = async (req, res) => {
         return res.status(403).json({ ok: false, message: "No puedes crear salas en locales que no son tuyos" });
     }
 
+    if (!Array.isArray(weekSlots) || !Array.isArray(weekendSlots)) {
+      return res.status(400).json({ ok: false, message: "weekSlots y weekendSlots deben ser arrays" });
+    }
+
+    if (weekSlots.length === 0 || weekendSlots.length === 0) {
+      return res.status(400).json({ ok: false, message: "Debes configurar horarios de semana y fin de semana" });
+    }
+
+
     const room = await EscapeRoom.create({
       localId,
       title,
@@ -155,6 +168,9 @@ exports.createRoom = async (req, res) => {
       themes,
       difficulty,
       durationMin,
+      weekSlots,
+      weekendSlots,
+      slotDurationMin,
       playersMin,
       playersMax,
       priceFrom,
@@ -355,6 +371,84 @@ exports.deleteRoomImage = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ ok: false, message: "Error eliminando imagen" });
+  }
+};
+
+exports.getRoomAvailability = async (req, res) => {
+  try {
+    const roomId = req.params.id;
+    const { date } = req.query; // "YYYY-MM-DD"
+
+    if (!date || typeof date !== "string") {
+      return res.status(400).json({ ok: false, message: "date es obligatorio (YYYY-MM-DD)" });
+    }
+
+    const room = await EscapeRoom.findById(roomId);
+    if (!room || room.isActive === false) {
+      return res.status(404).json({ ok: false, message: "Sala no encontrada o inactiva" });
+    }
+
+    const parts = date.split("-");
+    if (parts.length !== 3) {
+      return res.status(400).json({ ok: false, message: "Formato de date invalido (YYYY-MM-DD)" });
+    }
+
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+
+    if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) {
+      return res.status(400).json({ ok: false, message: "Formato de date invalido (YYYY-MM-DD)" });
+    }
+
+    const dayDate = new Date(y, m - 1, d);
+    if (isNaN(dayDate.getTime())) {
+      return res.status(400).json({ ok: false, message: "date no es una fecha valida" });
+    }
+
+    const day = dayDate.getDay();
+    const isWeekend = day === 0 || day === 6;
+    const slots = isWeekend ? room.weekendSlots : room.weekSlots;
+
+    const now = new Date();
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+    const results = [];
+
+    for (const slot of slots) {
+      const [hhStr, mmStr] = slot.split(":");
+      const hh = Number(hhStr);
+      const mm = Number(mmStr);
+
+      const slotDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+
+      // Existe booking en ese slot?
+      const existing = await Booking.findOne({
+        roomId,
+        scheduledAt: slotDate,
+        status: { $in: ["pending", "confirmed"] },
+      });
+
+      const diffMs = slotDate.getTime() - now.getTime();
+
+      results.push({
+        slot, // "HH:mm"
+        scheduledAt: slotDate,
+        available: !existing && diffMs > 0, 
+        callRequired: diffMs > 0 && diffMs < twelveHoursMs,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      roomId,
+      date,
+      dayType: isWeekend ? "weekend" : "week",
+      availability: results,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, message: "Error obteniendo disponibilidad" });
   }
 };
 

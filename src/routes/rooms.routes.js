@@ -37,8 +37,9 @@ router.get(
   listRooms
 );
 
-router.get("/:id", getRoomById);
+router.get("/:id/availability", roomsController.getRoomAvailability);
 router.get("/:id/reviews", reviewsController.getReviewsByRoom);
+router.get("/:id", getRoomById);
 
 
 // Owner/Admin

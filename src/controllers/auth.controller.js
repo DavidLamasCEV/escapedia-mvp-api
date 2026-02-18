@@ -187,7 +187,6 @@ exports.forgotPassword = async (req, res) => {
       });
     } catch (mailErr) {
       console.error("[forgot-password] Mail error:", mailErr && mailErr.message ? mailErr.message : mailErr);
-      // No devolvemos 500: el token ya está creado, el flujo sigue siendo válido para testeo
     }
 
     return res.status(200).json({
