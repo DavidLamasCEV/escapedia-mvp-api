@@ -3,6 +3,7 @@ const router = express.Router();
 
 const { authMiddleware } = require("../middlewares/auth.middleware");
 const { requireRole } = require("../middlewares/role.middleware");
+const { upload } = require("../middlewares/upload.middleware");
 
 const {
   createLocal,
@@ -10,22 +11,40 @@ const {
   getAllLocales,
   getLocalById,
   updateLocal,
-  deleteLocal
+  deleteLocal,
+  getPublicLocales,
+  getPublicLocalById,
+  getPublicRoomsByLocal,
+
+  uploadLocalCover,
+  deleteLocalCover,
 } = require("../controllers/locales.controller");
 
-router.post("/", authMiddleware, requireRole(["owner", "admin"]), createLocal);
+router.get("/public", getPublicLocales);
+router.get("/public/:id", getPublicLocalById);
+router.get("/public/:id/rooms", getPublicRoomsByLocal);
 
-// Importante: rutas fijas antes que /:id
+router.post("/", authMiddleware, requireRole(["owner", "admin"]), createLocal);
+router.get("/", authMiddleware, requireRole(["admin"]), getAllLocales);
 router.get("/mine", authMiddleware, requireRole(["owner", "admin"]), getMyLocales);
 
-// Admin: todos
-router.get("/", authMiddleware, requireRole(["admin"]), getAllLocales);
-
-// Detalle (owner/admin, el controller valida)
 router.get("/:id", authMiddleware, requireRole(["owner", "admin"]), getLocalById);
-
-// Admin: editar/borrar
 router.put("/:id", authMiddleware, requireRole(["admin"]), updateLocal);
 router.delete("/:id", authMiddleware, requireRole(["admin"]), deleteLocal);
+
+router.post(
+  "/:id/cover",
+  authMiddleware,
+  requireRole(["owner", "admin"]),
+  upload.single("image"),
+  uploadLocalCover
+);
+
+router.delete(
+  "/:id/cover",
+  authMiddleware,
+  requireRole(["owner", "admin"]),
+  deleteLocalCover
+);
 
 module.exports = router;

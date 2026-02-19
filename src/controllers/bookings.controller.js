@@ -4,7 +4,6 @@ const Local = require("../models/Local");
 const mongoose = require("mongoose");
 const User = require("../models/user");
 
-
 async function ensureNoOverlap(roomId, scheduledAt) {
   const existing = await Booking.findOne({
     roomId,
@@ -43,6 +42,42 @@ async function ensureOwnerOfRoom(reqUser, roomId) {
   return { room, local };
 }
 
+const ALLOWED_STATUSES = ["pending", "confirmed", "cancelled", "completed"];
+
+function assertValidNextStatus(currentStatus, nextStatus) {
+  if (!ALLOWED_STATUSES.includes(nextStatus)) {
+    const err = new Error("status invalido");
+    err.statusCode = 400;
+    throw err;
+  }
+  
+  const transitions = {
+    pending: ["confirmed", "cancelled"],
+    confirmed: ["completed", "cancelled"],
+    cancelled: [],
+    completed: [],
+  };
+
+  const allowed = transitions[currentStatus] || [];
+  if (!allowed.includes(nextStatus)) {
+    const err = new Error(`Transicion no permitida: ${currentStatus} -> ${nextStatus}`);
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+function applyStatus(booking, nextStatus) {
+  if (booking.status === nextStatus) return;
+
+  assertValidNextStatus(booking.status, nextStatus);
+
+  booking.status = nextStatus;
+
+  if (nextStatus === "confirmed") booking.confirmedAt = new Date();
+  if (nextStatus === "completed") booking.completedAt = new Date();
+  if (nextStatus === "cancelled") booking.cancelledAt = new Date();
+}
+
 exports.createBooking = async (req, res) => {
   try {
     const { roomId, scheduledAt, players, userId, customerNote, internalNote } = req.body;
@@ -69,7 +104,7 @@ exports.createBooking = async (req, res) => {
         message: "scheduledAt debe ser una fecha valida",
       });
     }
-    
+
     let customerNoteClean = "";
     if (customerNote !== undefined && customerNote !== null) {
       if (typeof customerNote !== "string") {
@@ -100,7 +135,7 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    const day = scheduledDate.getDay(); // 0=Domingo, 6=Sabado
+    const day = scheduledDate.getDay(); 
     const isWeekend = day === 0 || day === 6;
 
     const allowedSlots = isWeekend ? room.weekendSlots : room.weekSlots;
@@ -112,73 +147,35 @@ exports.createBooking = async (req, res) => {
     if (!Array.isArray(allowedSlots) || allowedSlots.length === 0) {
       return res.status(400).json({
         ok: false,
-        message: "Esta sala no tiene horarios configurados para ese día",
+        message: "Esta sala no tiene horarios configurados para ese dia",
       });
     }
 
     if (!allowedSlots.includes(timeHHmm)) {
       return res.status(400).json({
         ok: false,
-        message: "Ese horario no existe para esta sala en ese día",
-        info: {
-          dayType: isWeekend ? "weekend" : "week",
-          allowedSlots,
-        },
+        message: "Hora no disponible. Debe coincidir con un slot configurado",
       });
     }
-
-
-    if (playersNum < Number(room.playersMin) || playersNum > Number(room.playersMax)) {
-      return res.status(400).json({
-        ok: false,
-        message: "Numero de jugadores fuera de rango para esta sala",
-      });
-    }
-
-    // Regla: si faltan menos de 12h, hay que llamar (no se permite reservar online)
-    const now = new Date();
-    const diffMs = scheduledDate.getTime() - now.getTime();
-    const twelveHoursMs = 12 * 60 * 60 * 1000;
-    const userRole = req.user.role;
-
-    if (userRole === "user" && diffMs < twelveHoursMs) {
-      return res.status(409).json({
-        ok: false,
-        code: "CALL_REQUIRED",
-        message: "Faltan menos de 12 horas. Llama para confirmar disponibilidad.",
-      });
-    }
-
 
     await ensureNoOverlap(roomId, scheduledDate);
 
     let bookingUserId = req.user.id;
 
-    if (userRole === "owner" || userRole === "admin") {
-      if (userId) {
-        if (!mongoose.Types.ObjectId.isValid(userId)) {
-          return res.status(400).json({ ok: false, message: "userId invalido" });
-        }
-
-        const user = await User.findById(userId).select("_id role isDeleted");
-        if (!user || user.isDeleted) {
-          return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
-        }
-
-        if (user.role !== "user") {
-          return res.status(400).json({ ok: false, message: "Solo se puede asignar la reserva a un usuario con role 'user'" });
-        }
-
-        bookingUserId = user._id;
-      } else {
-        return res.status(400).json({
-          ok: false,
-          message: "Para reservas manuales (owner/admin) debes indicar userId del cliente",
-        });
+    if ((req.user.role === "owner" || req.user.role === "admin") && userId) {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({ ok: false, message: "userId invalido" });
       }
+
+      const existsUser = await User.findById(userId);
+      if (!existsUser) {
+        return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
+      }
+
+      bookingUserId = userId;
     }
 
-    const canWriteInternal = userRole === "owner" || userRole === "admin";
+    const canWriteInternal = req.user.role === "owner" || req.user.role === "admin";
 
     const booking = await Booking.create({
       userId: bookingUserId,
@@ -188,10 +185,9 @@ exports.createBooking = async (req, res) => {
       status: "pending",
       customerNote: customerNoteClean,
       internalNote: canWriteInternal ? internalNoteClean : "",
-      createdByUserId: req.user.id, 
-      createdByRole: req.user.role, 
+      createdByUserId: req.user.id,
+      createdByRole: req.user.role,
     });
-
 
     return res.status(201).json({ ok: true, booking });
   } catch (error) {
@@ -203,7 +199,6 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-
 exports.getMyBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({
@@ -211,8 +206,8 @@ exports.getMyBookings = async (req, res) => {
       isDeleted: { $ne: true },
     })
       .select("-internalNote")
-      .populate("roomId", "title city durationMin")
-      .sort({ createdAt: -1 });
+      .populate("roomId", "title city priceFrom durationMin")
+      .sort({ scheduledAt: -1 });
 
     return res.status(200).json({ ok: true, bookings });
   } catch (error) {
@@ -220,12 +215,10 @@ exports.getMyBookings = async (req, res) => {
   }
 };
 
-
-
 exports.cancelMyBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-    if (!booking) {
+    if (!booking || booking.isDeleted === true) {
       return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
@@ -237,7 +230,7 @@ exports.cancelMyBooking = async (req, res) => {
       return res.status(400).json({ ok: false, message: "Solo puedes cancelar reservas en estado pending" });
     }
 
-    booking.status = "cancelled";
+    applyStatus(booking, "cancelled");
     await booking.save();
 
     return res.status(200).json({ ok: true, booking });
@@ -248,23 +241,39 @@ exports.cancelMyBooking = async (req, res) => {
 
 exports.getOwnerBookings = async (req, res) => {
   try {
-    const { status } = req.query; // opcional filtrar por status
+    const { page = 1, limit = 20 } = req.query;
 
-    const filter = {};
-    if (status) filter.status = status;
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
 
-    const myLocals = await Local.find({ ownerId: req.user.id }).select("_id");
-    const localIds = myLocals.map((l) => l._id);
+    const locals = await Local.find({ ownerId: req.user.id }).select("_id");
+    const localIds = locals.map((l) => l._id);
 
-    const myRooms = await EscapeRoom.find({ localId: { $in: localIds } }).select("_id localId title");
-    const roomIds = myRooms.map((r) => r._id);
+    const rooms = await EscapeRoom.find({ localId: { $in: localIds } }).select("_id");
+    const roomIds = rooms.map((r) => r._id);
 
-    const bookings = await Booking.find({ roomId: { $in: roomIds }, ...filter })
-      .sort({ createdAt: -1 })
-      .populate("userId", "name email role")
-      .populate("roomId", "title city localId");
+    const filters = {
+      roomId: { $in: roomIds },
+      isDeleted: { $ne: true },
+    };
 
-    return res.status(200).json({ ok: true, bookings });
+    const bookings = await Booking.find(filters)
+      .populate("userId", "name email")
+      .populate("roomId", "title city")
+      .sort({ scheduledAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    const total = await Booking.countDocuments(filters);
+
+    return res.status(200).json({
+      ok: true,
+      page: pageNum,
+      limit: limitNum,
+      total,
+      pages: Math.ceil(total / limitNum),
+      bookings,
+    });
   } catch (error) {
     return res.status(500).json({ ok: false, message: "Error obteniendo reservas del owner" });
   }
@@ -273,7 +282,7 @@ exports.getOwnerBookings = async (req, res) => {
 exports.confirmBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-    if (!booking) {
+    if (!booking || booking.isDeleted === true) {
       return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
@@ -283,7 +292,7 @@ exports.confirmBooking = async (req, res) => {
       return res.status(400).json({ ok: false, message: "Solo puedes confirmar reservas en estado pending" });
     }
 
-    booking.status = "confirmed";
+    applyStatus(booking, "confirmed");
     await booking.save();
 
     return res.status(200).json({ ok: true, booking });
@@ -296,18 +305,17 @@ exports.confirmBooking = async (req, res) => {
 exports.completeBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-    if (!booking) {
+    if (!booking || booking.isDeleted === true) {
       return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
     await ensureOwnerOfRoom(req.user, booking.roomId);
 
-    // Transicion valida: confirmed -> completed
     if (booking.status !== "confirmed") {
       return res.status(400).json({ ok: false, message: "Solo puedes completar reservas en estado confirmed" });
     }
 
-    booking.status = "completed";
+    applyStatus(booking, "completed");
     await booking.save();
 
     return res.status(200).json({ ok: true, booking });
@@ -320,7 +328,7 @@ exports.completeBooking = async (req, res) => {
 exports.cancelBookingAsOwner = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-    if (!booking) {
+    if (!booking || booking.isDeleted === true) {
       return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
@@ -330,7 +338,7 @@ exports.cancelBookingAsOwner = async (req, res) => {
       return res.status(400).json({ ok: false, message: "No puedes cancelar una reserva ya completada" });
     }
 
-    booking.status = "cancelled";
+    applyStatus(booking, "cancelled");
     await booking.save();
 
     return res.status(200).json({ ok: true, booking });
@@ -342,27 +350,25 @@ exports.cancelBookingAsOwner = async (req, res) => {
 
 exports.updateBookingNotes = async (req, res) => {
   try {
-    const bookingId = req.params.id;
-    const { customerNote, internalNote } = req.body;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return res.status(400).json({ ok: false, message: "bookingId invalido" });
-    }
-
-    const booking = await Booking.findById(bookingId);
-    if (!booking || booking.isDeleted) {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || booking.isDeleted === true) {
       return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
+    const userRole = req.user.role;
+
+    if (userRole !== "owner" && userRole !== "admin") {
+      if (String(booking.userId) !== String(req.user.id)) {
+        return res.status(403).json({ ok: false, message: "No puedes modificar notas de otras reservas" });
+      }
+    } else {
+      await ensureOwnerOfRoom(req.user, booking.roomId);
+    }
+
+    const { customerNote, internalNote } = req.body;
     let hasChanges = false;
 
     if (customerNote !== undefined) {
-      if (String(booking.userId) !== String(userId) && userRole !== "admin") {
-        return res.status(403).json({ ok: false, message: "No puedes modificar la nota del cliente" });
-      }
-
       if (typeof customerNote !== "string") {
         return res.status(400).json({ ok: false, message: "customerNote debe ser texto" });
       }
@@ -406,3 +412,39 @@ exports.updateBookingNotes = async (req, res) => {
   }
 };
 
+exports.updateBookingStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (typeof status !== "string") {
+      return res.status(400).json({ ok: false, message: "status es obligatorio" });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || booking.isDeleted === true) {
+      return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
+    }
+
+    if (req.user.role === "user") {
+      if (String(booking.userId) !== String(req.user.id)) {
+        return res.status(403).json({ ok: false, message: "No puedes modificar reservas de otros usuarios" });
+      }
+      if (status !== "cancelled") {
+        return res.status(403).json({ ok: false, message: "Solo puedes cancelar tu reserva" });
+      }
+      if (booking.status !== "pending") {
+        return res.status(400).json({ ok: false, message: "Solo puedes cancelar reservas en estado pending" });
+      }
+    } else {
+      await ensureOwnerOfRoom(req.user, booking.roomId);
+    }
+
+    applyStatus(booking, status);
+    await booking.save();
+
+    return res.status(200).json({ ok: true, booking });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({ ok: false, message: error.message || "Error actualizando estado" });
+  }
+};

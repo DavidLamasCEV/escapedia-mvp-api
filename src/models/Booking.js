@@ -2,34 +2,40 @@ const mongoose = require("mongoose");
 
 const bookingSchema = new mongoose.Schema(
   {
-    userId: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: "User", 
-        required: true 
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
 
-    roomId: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: "EscapeRoom", 
-        required: true 
+    roomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EscapeRoom",
+      required: true,
     },
 
-    scheduledAt: { 
-        type: Date, 
-        required: true 
+    scheduledAt: {
+      type: Date,
+      required: true,
     },
 
-    players: { 
-        type: Number, 
-        required: true, 
-        min: 1 
+    players: {
+      type: Number,
+      required: true,
+      min: 1,
     },
+
 
     status: {
       type: String,
       enum: ["pending", "confirmed", "completed", "cancelled"],
       default: "pending",
+      index: true,
     },
+
+    confirmedAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
 
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -57,17 +63,16 @@ const bookingSchema = new mongoose.Schema(
       default: "",
     },
 
-    isDeleted: { 
-      type: Boolean, 
-      default: false, 
-      index: true 
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
 
-    deletedAt: { 
-      type: Date, 
-      default: null 
+    deletedAt: {
+      type: Date,
+      default: null,
     },
-
   },
   { timestamps: true }
 );

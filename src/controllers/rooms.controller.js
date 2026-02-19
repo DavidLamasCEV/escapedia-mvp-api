@@ -4,7 +4,6 @@ const Booking = require("../models/Booking");
 const { uploadBase64Image } = require("../services/cloudinary.service");
 const { deleteByPublicId } = require("../services/cloudinary.service");
 
-// GET /rooms (public)
 exports.listRooms = async (req, res) => {
   try {
     const {
@@ -70,7 +69,6 @@ exports.listRooms = async (req, res) => {
     if (sort === "priceFrom") sortObj = { priceFrom: 1 }; // alias
     if (sort === "popular") sortObj = { ratingCount: -1, ratingAvg: -1 };
 
-    // 5) Query
     const roomsRaw = await EscapeRoom.find(filters)
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -164,7 +162,6 @@ exports.createRoom = async (req, res) => {
       return res.status(404).json({ ok: false, message: "Local no encontrado" });
     }
 
-    // owner solo puede crear rooms en sus venues (admin puede en cualquiera)
     if (req.user.role !== "admin" && String(local.ownerId) !== String(req.user.id)) {
         return res.status(403).json({ ok: false, message: "No puedes crear salas en locales que no son tuyos" });
     }
@@ -353,7 +350,7 @@ exports.deleteRoomImage = async (req, res) => {
     if (room.galleryImageUrls.length === before) {
       return res.status(404).json({
         ok: false,
-        message: "Esa imagen no existe en la galeria de esta room",
+        message: "Esa imagen no existe en la galeríaa de esta sala",
       });
     }
 
@@ -367,14 +364,13 @@ exports.deleteRoomImage = async (req, res) => {
         const afterUpload = imageUrl.substring(idx + marker.length); // v123/escapedia/rooms/.../archivo.png
         const parts = afterUpload.split("/");
 
-        // Quitamos la parte "v123..." si existe
         if (parts[0].startsWith("v")) {
           parts.shift();
         }
 
         const pathWithFile = parts.join("/"); // escapedia/rooms/.../archivo.png
         const noQuery = pathWithFile.split("?")[0];
-        const noExt = noQuery.replace(/\.[^/.]+$/, ""); // quitamos extension
+        const noExt = noQuery.replace(/\.[^/.]+$/, ""); 
 
         await deleteByPublicId(noExt);
       }
@@ -440,7 +436,6 @@ exports.getRoomAvailability = async (req, res) => {
 
       const slotDate = new Date(y, m - 1, d, hh, mm, 0, 0);
 
-      // Existe booking en ese slot?
       const existing = await Booking.findOne({
         roomId,
         scheduledAt: slotDate,

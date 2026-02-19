@@ -58,11 +58,11 @@ async function createReview(req, res) {
 
     const booking = await Booking.findById(bookingId);
     if (!booking || booking.isDeleted) {
-      return res.status(404).json({ ok: false, message: "Booking no encontrada" });
+      return res.status(404).json({ ok: false, message: "Reserva no encontrada" });
     }
 
     if (String(booking.userId) !== String(userId)) {
-      return res.status(403).json({ ok: false, message: "No puedes crear review para una booking que no es tuya" });
+      return res.status(403).json({ ok: false, message: "No puedes crear una reseña para una reserva que no es tuya" });
     }
 
     if (booking.status !== "completed") {
@@ -72,7 +72,7 @@ async function createReview(req, res) {
     // si Review tiene soft delete, filtra aqui tambien
     const existing = await Review.findOne({ bookingId: booking._id, isDeleted: false });
     if (existing) {
-      return res.status(409).json({ ok: false, message: "Ya existe una review para esta booking" });
+      return res.status(409).json({ ok: false, message: "¡Ya has escrito una reseña anterior!" });
     }
 
     const review = await Review.create({
@@ -88,7 +88,7 @@ async function createReview(req, res) {
     return res.status(201).json({ ok: true, review });
   } catch (err) {
     if (err && err.code === 11000) {
-      return res.status(409).json({ ok: false, message: "Ya existe una review para esta booking" });
+      return res.status(409).json({ ok: false, message: "¡Ya has escrito una reseña anterior!" });
     }
     return res.status(500).json({ ok: false, message: "Error creando review" });
   }
